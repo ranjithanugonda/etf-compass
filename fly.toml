@@ -1,0 +1,22 @@
+# ETF Compass — Fly.io deployment config
+# https://fly.io/docs/reference/configuration/
+
+app = "etf-compass"
+primary_region = "sin"  # Mumbai/Singapore region for Indian market
+
+[build]
+  dockerfile = "Dockerfile"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = false   # keep running for demo
+  min_machines_running = 1
+
+[[vm]]
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1
+
+[env]
+  PYTHONUNBUFFERED = "1"

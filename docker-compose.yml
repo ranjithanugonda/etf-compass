@@ -1,0 +1,34 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: etf-compass-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-etf_compass}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-etf_compass_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-etf_compass}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-etf_compass} -d ${POSTGRES_DB:-etf_compass}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7
+    container_name: etf-compass-redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:
+  redisdata:
