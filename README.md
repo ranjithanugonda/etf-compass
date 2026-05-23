@@ -3,81 +3,102 @@
 Rule-based, fully automated ETF accumulation system for the Indian cash market, with a persistent LLM-wiki that remembers *why* every trade was taken.
 
 > "This system compounds capital by structure, not by emotion."
-> — PRD v1.1
 
-## What it does
+## Quick Start (Docker)
 
-- Scans 21 approved ETFs daily after market close (Asia/Kolkata, 16:00 IST)
-- Generates buy / add-on / exit signals using a trend filter (EMA21/EMA60), pullback detection, and tranche-based capital allocation
-- Places next-day limit orders (paper-trading by default; real broker pluggable later)
-- Exits only on **5 % profit over weighted-average cost** or a **4-month time stop** — no stop-loss
-- Maintains a markdown wiki (Karpathy LLM-wiki pattern) that records every signal, every decision, every rationale
-- Surfaces three dashboards: **Decision** (ROI, capital utilisation), **Diagnostic** (monthly activity, equity curve), **Evidence** (positions, trades, wiki pages)
+```bash
+# 1. Start Postgres & Redis
+docker run -d --name etf-postgres -p 5432:5432 \
+  -e POSTGRES_USER=etf_compass -e POSTGRES_PASSWORD=change_me \
+  -e POSTGRES_DB=etf_compass postgres:16
 
-Full spec: [`docs/prd/etf-prd.md`](./docs/prd/etf-prd.md).
-Project conventions: [`CLAUDE.md`](./CLAUDE.md).
+docker run -d --name etf-redis -p 6379:6379 redis:7
 
-## Prerequisites
+# 2. Create .env
+cp .env.example .env
+# Edit .env — set POSTGRES_HOST=host.docker.internal, REDIS_HOST=host.docker.internal
 
-- **Python 3.14** — the existing env at `C:\Users\ranjith.k.anugonda\OneDrive - Accenture\Documents\PyCoding\.314env` is used by default.
-- **Postgres 16** + **Redis 7** — see "Run path" below for two installation options.
-- **Node.js 20 LTS** — only required when the frontend lands (Phase 6 of the plan).
-- **`ANTHROPIC_API_KEY`** — for the LLM-wiki. Sign up at <https://console.anthropic.com>. Skip if running with the LLM disabled.
+# 3. Run the app
+docker run -d --name etf-compass -p 7778:8080 \
+  -e POSTGRES_HOST=host.docker.internal \
+  -e REDIS_HOST=host.docker.internal \
+  ranjithanugonda/etf-compass:latest
 
-## Run path A — Docker Desktop (recommended)
+# 4. Initialize DB schema (first time only)
+docker exec etf-postgres psql -U etf_compass -d etf_compass \
+  -f /path/to/schema.sql  # or run alembic upgrade head
 
-1. Install **Docker Desktop for Windows** from <https://docker.com/products/docker-desktop>. The installer enables WSL 2 automatically; accept it. If WSL 2 is missing, open an elevated PowerShell, run `wsl --install`, and reboot.
-2. Launch Docker Desktop. Settings → Resources → at least **4 GB RAM and 2 CPUs**.
-3. Verify: `docker --version` and `docker compose version` both print versions.
-4. From the project root:
-   ```powershell
-   copy .env.example .env
-   # edit .env, set ANTHROPIC_API_KEY and POSTGRES_PASSWORD
-   docker compose up -d
-   ```
-5. Postgres listens on `localhost:5432`, Redis on `localhost:6379`. Backend and frontend services will be added in later phases.
+# 5. Ingest OHLC data & seed ETFs (first time only)
+curl -X POST http://localhost:7778/api/admin/seed-data
 
-> **Accenture-managed-laptop note:** Hyper-V / WSL 2 may be locked down. If the installer fails, raise an IT ticket for "Docker Desktop for Developer use" or fall back to Run path B.
-
-## Run path B — Native (no Docker)
-
-1. Install **PostgreSQL 16** from <https://postgresql.org/download/windows> (EDB installer). Default port 5432. Remember the password.
-2. Install **Redis** for Windows via **Memurai** (free Developer edition) from <https://memurai.com>. *(Or skip Redis for the MVP — the queue can run in-memory.)*
-3. Install **Node.js 20 LTS** from <https://nodejs.org> (only when the frontend lands).
-4. Copy `.env.example` to `.env` and fill in `POSTGRES_*` to point at your local Postgres, plus `ANTHROPIC_API_KEY`.
-5. Backend and frontend will run directly from the `.314env` virtualenv and `frontend/`; instructions added in Phase 1 and Phase 6 respectively.
-
-Same MVP either way. Docker just packages it for the K8s path.
-
-## Project layout (target state)
-
-See the approved plan at `C:\Users\ranjith.k.anugonda\.claude\plans\i-want-to-build-vast-whisper.md`. Files are added phase-by-phase rather than pre-scaffolded.
-
-## Phases (current status)
-
-| Phase | What | Status |
-|---|---|---|
-| 0a | Prereqs / dev env walkthrough | Done (this README) |
-| 0b | Scaffold (this commit) | **In progress** |
-| 1  | DB models + OHLC ingestion | Pending |
-| 2  | Strategy engine + backtest gate | Pending |
-| 3  | Paper broker + scheduled jobs | Pending |
-| 4  | LLM-wiki (Anthropic) | Pending |
-| 5  | FastAPI + JWT auth | Pending |
-| 6  | React dashboards | Pending |
-| 7  | Docker images + K8s manifests | Pending |
-| 8  | Backtest UI + polish | Pending |
-
-## Extracting the source specs
-
-The two source `.docx` files in this repo are converted to markdown by:
-
-```powershell
-& "C:/Users/ranjith.k.anugonda/OneDrive - Accenture/Documents/PyCoding/.314env/Scripts/python.exe" scripts/extract_docx.py
+# 6. Open http://localhost:7778
 ```
 
-Outputs land in `docs/prd/` and `docs/action-items/`.
+## What's inside
 
-## License & ownership
+| Layer | Stack |
+|-------|-------|
+| Backend | Python 3.13, FastAPI, SQLAlchemy async, Alembic |
+| Frontend | React 19, TypeScript, Vite 8, Tailwind 4, lightweight-charts v5 |
+| Storage | PostgreSQL 16, Redis 7, Parquet files |
+| Strategy | Pure engine — trend (EMA21/60), pullback, DCA add-ons, profit/stop-loss/time exits |
+| Wiki | Karpathy LLM-wiki pattern — markdown files compound knowledge over time |
 
-Private. Product Owner: Anand Venkitachalam. Prepared for KARM Capital.
+## Dashboards
+
+- **Decision** — YTD ROI, capital utilization, holding duration KPIs
+- **Backtest** — Configurable date/corpus, portfolio allocation chart, per-ETF performance, currently holding
+- **Diagnostic** — Monthly ROI chart, activity table with live/backtest toggle, ETF filter
+- **Evidence** — Active positions (clickable → trade history), recent trades, wiki page links
+- **Trading** — Manual paper trade placement (entry/addon/exit)
+- **Admin** — Strategy params, ETF manager, job triggers (backtest/EOD scan/morning execute), audit log
+
+## Strategy Rules
+
+| Rule | Condition | Action |
+|------|-----------|--------|
+| Entry | STRONG trend (close > EMA21 > EMA60) + pullback (2.5% weekly or 5% monthly) | Buy Tranche 1: ₹3,00,000 |
+| Add-on | Close ≤ LBP × 0.975 + within window + tranches remaining | Buy next tranche (₹2L / ₹1.5L / ₹1L…) |
+| Profit Exit | Close ≥ WAC × 1.05 | Sell entire position |
+| Stop-Loss | Close ≤ WAC × (1 − stop_loss_pct) | Sell entire position |
+| Time Exit | Held ≥ 4 months without other exit | Sell entire position |
+
+All rules configurable in Admin → Strategy Params.
+
+## Project layout
+
+```
+├── backend/app/
+│   ├── strategy/     # Pure engine (no I/O, no DB)
+│   ├── broker/       # Paper broker + state loader
+│   ├── backtest/     # Bar-by-bar replay engine
+│   ├── routers/      # FastAPI endpoints
+│   ├── models/       # SQLAlchemy ORM models
+│   ├── wiki/         # Wiki writer + indexer
+│   └── jobs/         # EOD scan, morning execute
+├── frontend/src/     # React SPA
+│   └── components/   # 6 dashboards + ETF detail modal
+├── wiki/             # LLM-readable knowledge base
+│   ├── etfs/         # Per-ETF pages (position state, trade history)
+│   ├── decisions/    # Per-trade decision pages
+│   ├── daily/        # EOD scan summaries
+│   └── backtest/     # Backtest aggregate results
+├── docs/prd/         # Authoritative spec
+└── data/             # Parquet OHLC + backtest cache (gitignored)
+```
+
+## Development
+
+```bash
+# Backend
+python -m venv .venv && source .venv/bin/activate
+pip install -e .
+uvicorn backend.app.main:app --reload --port 8000
+
+# Frontend
+cd frontend && npm install && npm run dev
+
+# Tests
+pytest backend/tests/ -v
+ruff check . && mypy backend/
+```
